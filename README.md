@@ -49,9 +49,8 @@ This command will:
 
 In Version 2.0, you can specify instances when monitoring signals in the VCD file. This allows you to focus only on the signals belonging to specific instances, rather than processing all signals in the file.
 
-### Command Line Arguments
+### Command Line Argument
 
-- `vcd_file`: Path to the input VCD file to parse.
 - `-i` or `--instances`: Specify list of instance names to track.
 
 #### Example Usage
