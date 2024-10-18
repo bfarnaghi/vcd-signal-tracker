@@ -43,3 +43,21 @@ This command will:
 - `-saif`: Generates SAIF files for each clock cycle.
 - `-rmvcd`: Removes VCD files after generating SAIF files.
 - `-o`: Specifies the output directory for generated files.
+
+**Version**: 2.0
+
+## Added Feature
+
+### Instance Filtering
+In Version 2.0, you can specify instances when monitoring signals in the VCD file. This allows you to focus only on the signals belonging to specific instances, rather than processing all signals in the file.
+
+- If you do not provide any instances, the script will monitor **all available instances**.
+- You can define instances by providing part of the instance name (e.g., `DUT`). The script will then track all signals that include the specified instance at any level in the hierarchy.
+- If the provided instance is not found, the script will suggest similar available instances for selection or allow you to choose to track all similar instances.
+
+#### Example Usage
+Monitor signals only from the instance named `DUT`:
+```bash
+python vcd_signal_tracker_v2.py input.vcd --instances DUT --time 0 10000
+```
+If the instance is not found, the script will offer suggestions based on the available instance names, and you can select the correct one or choose to track multiple similar instances.

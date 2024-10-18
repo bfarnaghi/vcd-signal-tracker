@@ -474,7 +474,7 @@ def validate_instances(input_instances, signals):
                 print(f"Instance '{instance}' not found. Did you mean one of the following?")
                 for i, match in enumerate(close_matches):
                     print(f"{i + 1}: {match}")
-                print("Enter the number of the instance you want to select, or type 'all' to select all:")
+                print("Enter the index of the instances you want to select:")
                 
                 choice = input("Your choice (comma-separated for multiple, 'all' for all): ").strip()
                 if choice == 'all':
