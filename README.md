@@ -21,7 +21,7 @@ To use VCD Signal Tracker, run the script with the following arguments:
 - `vcd_file`: Path to the input VCD file to parse.
 - `--time`: Specify the start and end times for signal monitoring (in clock cycles).
 - `--clock`: Specify the clock period to divide the signals into separate cycles.
-- `--generate_saif_files`: If specified, generates SAIF files for each clock cycle.
+- `--generate_saif_files`: If specified, generates SAIF files for each clock cycle. (Using vcd2saif tool provided by Synopsys)
 - `--remove_vcd_files`: If specified, removes the VCD files after SAIF file generation.
 - `--output_folder`: Specify a folder to store the generated SAIF or VCD files.
 
@@ -58,6 +58,6 @@ In Version 2.0, you can specify instances when monitoring signals in the VCD fil
 #### Example Usage
 Monitor signals only from the instance named `DUT`:
 ```bash
-python vcd_signal_tracker_v2.py input.vcd --instances DUT --time 0 10000
+python vst.py input.vcd --instances DUT --time 0 10000
 ```
 If the instance is not found, the script will offer suggestions based on the available instance names, and you can select the correct one or choose to track multiple similar instances.
