@@ -44,11 +44,10 @@ This command will:
 - `-rmvcd`: Removes VCD files after generating SAIF files.
 - `-o`: Specifies the output directory for generated files.
 
+
+---
+
 **Version**: 2.0
-
-## Added Feature
-
-### Instance Filtering
 In Version 2.0, you can specify instances when monitoring signals in the VCD file. This allows you to focus only on the signals belonging to specific instances, rather than processing all signals in the file.
 
 - If you do not provide any instances, the script will monitor **all available instances**.
