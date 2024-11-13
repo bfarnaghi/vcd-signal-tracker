@@ -1,0 +1,13 @@
+# Ignore all log files
+*.log
+
+# Ignore all .txt files
+*.txt
+
+# Ignore all .json files 
+*.json
+
+*/*
+
+extract_cycle_numbers.py
+vst copy.py

@@ -1,3 +1,7 @@
+# I extracted the waveforms of the instance with a defined gap first and write in different VCD file
+# then I used these VCD files to extracte the VCD of each clock cycle and write in different VCD file
+# then I use the vc2saif to convert the VCD to SAIF file
+
 import  argparse
 from    collections.abc import MutableMapping
 import  bisect
@@ -7,22 +11,25 @@ import  re
 from    decimal import Decimal
 from    pprint import PrettyPrinter
 import  os
-import  time
+import time as time_module
 import  random
 import  string
-import  difflib
+import  json
 
 ##### Parse Command Line Arguments
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Parse and analyze VCD files.")
-    parser.add_argument("vcd_file", help="Path to the VCD file.")
+    parser.add_argument("-f", "--folder", help="Path to the folder containing VCD files.")
+    parser.add_argument("vcd_file", nargs='?', help="Path to the VCD file. This argument is optional if --folder is provided.")
     parser.add_argument("-i","--instances", type=str, nargs='+', help="List of instance names to track")
     parser.add_argument("-t", "--time", nargs=2, type=int, help="Start time and end time of monitoring.")
     parser.add_argument("-c", "--clock", type=int, help="Clock period for each cycle.")
+    parser.add_argument("-e", "--enable", nargs='*', help="Enable signal to monitor selected signals.")
     parser.add_argument("-saif", "--generate_saif_files", action="store_true", help="Generate SAIF files for each cycle.")
     parser.add_argument("-rmvcd", "--remove_vcd_files", action="store_true", help="Remove VCD files after generating SAIF files.")
     parser.add_argument("-o", "--output_folder", help="Output folder for generated VCD and SAIF files.")
+    parser.add_argument("-g", "--enable_gap_threshold", type=int, help="Specify the maximum allowed gap between enable signals to group output.")
     return parser.parse_args()
 
 ##### Enhance VCD Parsing Logic
@@ -256,8 +263,20 @@ class Scope(MutableMapping):
 
 ##### Monitor Signals
 
-def monitor_signals(vcd, signals, instances, start_time, end_time):
+def monitor_signals(vcd, signals, instances, enable, start_time, end_time):
     
+    enable_status = 1 if not enable else 0  # If enable is empty, enable_status is always 1 (monitor all times)
+    enable_data_dict = {}
+
+    # Populate enable data only if enable signals are provided
+    if enable:
+        for enable_signal in enable:
+            enable_data = vcd[enable_signal].tv
+            enable_data_dict.update({time: value for time, value in enable_data})
+
+    def get_enable_value(enable_data, time):
+        return enable_data.get(time, 'x')  # Default to 'x' if time is not found
+
     # Filter signals to include only those that belong to the specified instances
     def filter_signals_by_instance(signals, instances):
         filtered_signals = []
@@ -275,9 +294,14 @@ def monitor_signals(vcd, signals, instances, start_time, end_time):
     for signal in filtered_signals:
         sig_data = vcd[signal].tv  # Time-value pairs for the signal
         for time, value in sig_data:
-            if start_time <= time <= end_time:
+            if enable:  # Check enable status only if enable signals are provided
+                if get_enable_value(enable_data_dict, time) == '1':
+                    enable_status = 1
+                else: # get_enable_value(enable_data_dict, time) == '0':
+                    enable_status = 0
+            if start_time <= time <= end_time and enable_status == 1:
                 monitored_data[signal].append((time, value))
-    
+
     return monitored_data
 
 ##### Write Output
@@ -355,7 +379,7 @@ def generate_vcd_header(monitored_data):
     # Convert list to a string for easy printing
     return ''.join(header)
 
-def generate_vcd_files_with_monitored_data(start_time,end_time,num_cycles, monitored_data, output_folder):
+def generate_vcd_files_with_monitored_data(start_time,num_cycles, monitored_data, output_folder):
 
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -364,7 +388,8 @@ def generate_vcd_files_with_monitored_data(start_time,end_time,num_cycles, monit
     vcd_header = generate_vcd_header(monitored_data)
 
     # Step 2: Append specific monitored data for each cycle
-    start_cycle_time = time.time()
+    start_cycle_time = time_module.time()
+    #time = 0  # Initialize the time variable
     for cycle in range(num_cycles):
         cycle_time = start_time + cycle * clock_period
         vcd_file_path = os.path.join(output_folder, f"cycle_{cycle_time}.vcd")
@@ -447,19 +472,96 @@ def generate_vcd_files_with_monitored_data(start_time,end_time,num_cycles, monit
 
         if args.generate_saif_files:
             # Step 3: Generate SAIF files for each cycle using vcd2saif command
-            saif_file_path = os.path.join(output_folder, f"cycle_{cycle}.saif")
+            saif_file_path = os.path.join(output_folder, f"cycle_{cycle_time}.saif")
             os.system(f"vcd2saif -input {vcd_file_path} -output {saif_file_path} >> saif.log")
 
             # Wait for the conversion to complete before removing the VCD file
             if args.remove_vcd_files:
                 while not os.path.exists(saif_file_path):
-                    time.sleep(1)  # Wait for 1 second before checking again
+                    time_module.sleep(1)  # Wait for 1 second before checking again
                 os.remove(vcd_file_path)
     
-    print(f"Monitored data written to VCD files for each cycle in {time.time() - start_cycle_time:.2f} seconds.")
+    print(f"Monitored data written to VCD files for each cycle in {time_module.time() - start_cycle_time:.2f} seconds.")
+
+def generate_one_vcd_file_monitored_data(monitored_data, output_folder):
+
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    # Step 1: Create identical header for all VCD files
+    vcd_header = generate_vcd_header(monitored_data)
+
+    # Variables to manage file splitting based on time gap
+    last_time = None
+    file_count = 1
+    gap = args.enable_gap_threshold if args.enable_gap_threshold else 0
+    print(f"Enable gap threshold: {gap} ps")
+    # Step 2: Append specific monitored data for each cycle
+    start_generate_time = time_module.time()
+
+    if gap > 0:
+        vcd_file_path = os.path.join(output_folder, f"monitored_data_{file_count}.vcd")
+    else:
+        vcd_file_path = os.path.join(output_folder, f"monitored_data.vcd")
+
+    f = open(vcd_file_path, 'w')
+
+    f.write(vcd_header)
+    print(f"Writing monitored data to VCD file: {vcd_file_path}")
+    start_time_monitor = min([time for data in monitored_data.values() for time, _ in data], default=0)
+    f.write(f"#{start_time_monitor}\n")
+    for idx, (signal, data) in enumerate(monitored_data.items(), start=1):
+        identifier = identifiers[signal]
+        if data:
+            initial_value = data[0][1]
+            if len(initial_value) == 1:
+                f.write(f"{initial_value}{identifier}\n")
+            else:
+                f.write(f"b{initial_value} {identifier}\n")
+
+    # Write signal changes
+    for time in sorted(set(time for data in monitored_data.values() for time, _ in data)):
+        # Check if time gap exceeds the specified threshold
+        if last_time is not None and (time - last_time) > gap:
+            # Close current file and start a new one
+            f.write("$end\n")
+            f.close()
+            print(f"Time gap exceeded threshold. Starting new VCD file: monitored_data_{file_count + 1}.vcd")
+            file_count += 1
+            vcd_file_path = os.path.join(output_folder, f"monitored_data_{file_count}.vcd")
+            f = open(vcd_file_path, 'w')
+            f.write(vcd_header)
+            #f.write(f"#{time}\n")
+
+        f.write(f"#{time}\n")
+        for idx, (signal, data) in enumerate(monitored_data.items(), start=1):
+            identifier = identifiers[signal]
+            for t, value in data:
+                if t == time:
+                    if len(value) == 1:
+                        f.write(f"{value}{identifier}\n")
+                    else:
+                        f.write(f"b{value} {identifier}\n")
+        last_time = time
+
+    f.write("$end\n")
+    f.close()
+
+    if args.generate_saif_files:
+        # Step 3: Generate SAIF files for each cycle using vcd2saif command
+        saif_file_path = os.path.join(output_folder, f"monitored_data.saif")
+        os.system(f"vcd2saif -input {vcd_file_path} -output {saif_file_path} >> saif.log")
+
+        # Wait for the conversion to complete before removing the VCD file
+        if args.remove_vcd_files:
+            while not os.path.exists(saif_file_path):
+                time_module.sleep(1)  # Wait for 1 second before checking again
+            os.remove(vcd_file_path)
+    
+    print(f"Monitored data written to VCD file in {time_module.time() - start_generate_time:.2f} seconds.")
 
 def validate_instances(input_instances, signals):
-    #available_instances = list(set(signal.split('.')[-2] for signal in signals))
+
     available_instances = list(set('.'.join(signal.split('.')[:-1]) for signal in signals))
 
     valid_instances = []
@@ -496,45 +598,96 @@ def validate_instances(input_instances, signals):
 
     return valid_instances
 
+def find_signals_with_string(signals, target_string):
+    matching_signals = []
+    for signal in signals:
+        if target_string in signal:
+            matching_signals.append(signal)
+    return matching_signals
+
 if __name__ == "__main__":
 
     args = parse_args()
-    print("=====================================")
-    print("Parsing VCD file...")
-    start_parse_time = time.time()
-    vcd = VCDPARSE(vcd_path=args.vcd_file)
-    end_parse_time = time.time()
-    print(f"VCD file parsed successfully in {end_parse_time - start_parse_time:.2f} seconds.")
-    
-    start_time, end_time = args.time if args.time else (vcd.get_begintime(), vcd.get_endtime())
-    print(f"Total time duration of vcd file: {vcd.get_begintime()} to {vcd.get_endtime()}.")
-    print(f"Monitoring signals from time {start_time} to {end_time}.")
-    print(f"Total time duration: {end_time - start_time} ps.")
-    print(f"Total number of signals: {len(vcd.get_signals())}")
+    vcd_files = []
+    if args.folder:
+        for file in os.listdir(args.folder):
+            if file.endswith(".vcd"):
+                vcd_files.append(os.path.join(args.folder, file))
+    elif args.vcd_file:
+        vcd_files.append(args.vcd_file)
 
-    clock_period = args.clock if args.clock else 2
-    output_folder = args.output_folder if args.output_folder else "output"
+    for vcd_file in vcd_files:
+        print("=====================================")
+        print("Parsing VCD file...")
+        start_parse_time = time_module.time()
+        vcd = VCDPARSE(vcd_path=vcd_file)
+        end_parse_time = time_module.time()
+        print(f"VCD file parsed successfully in {end_parse_time - start_parse_time:.2f} seconds.")
+        
+        start_time, end_time = args.time if args.time else (vcd.get_begintime(), vcd.get_endtime())
+        print(f"Total time duration of vcd file: {vcd.get_begintime()} to {vcd.get_endtime()}.")
+        print(f"Monitoring signals from time {start_time} to {end_time}.")
+        print(f"Total time duration: {end_time - start_time} ps.")
+        print(f"Total number of signals: {len(vcd.get_signals())}")
 
-    num_cycles = math.ceil((end_time - start_time) / clock_period)
-    print(f"Total number of cycles: {num_cycles}")
-    print("=====================================")
+        clock_period = args.clock if args.clock else 2
+        output_folder = os.path.join(args.output_folder if args.output_folder else "output", os.path.splitext(os.path.basename(vcd_file))[0])
 
-    #Check if instances are provided, if not, select all
-    if not args.instances:
-        print("No instances specified. Monitoring all instances.")
-        instances = "All"
-    else:
-        # Validate the provided instances
-        instances = validate_instances(args.instances, vcd.get_signals())
+        num_cycles = math.ceil((end_time - start_time) / clock_period)
+        print(f"Total number of cycles to monitor: {num_cycles}")
+        print("=====================================")
 
-    print("Monitoring signals...")
-    monitored_data = monitor_signals(vcd, vcd.get_signals(),instances, start_time, end_time)
-    end_monitor_time = time.time()
-    print(f"Monitoring data collected successfully in {end_monitor_time - end_parse_time:.2f} seconds.")
-    print("=====================================")
+        # Check if instances are provided, if not, select all
+        if not args.instances:
+            print("No instances specified. Monitoring all instances.")
+            instances = "All"
+        else:
+            # Validate the provided instances
+            instances = validate_instances(args.instances, vcd.get_signals())
 
-    print("Generating output files...")
-    generate_vcd_files_with_monitored_data(start_time,end_time,num_cycles, monitored_data, output_folder)
+        # Find enable signals (if any)
+        selected_enable = []
+        if args.enable:
+            print("Searching for enable signals...")
+            for select_args in args.enable:
+                matching_signals = find_signals_with_string(vcd.get_signals(), select_args)
 
-    print("=====================================")
-    print(f"Output files generated successfully in {time.time() - start_parse_time:.2f} seconds.")
+                if matching_signals:
+                    if len(matching_signals) == 1:
+                        selected_enable.append(matching_signals[0])
+                        print(f"Selected enable signal: {matching_signals[0]}")
+                    else:
+                        print("Multiple matching enable signals found. Please select one:")
+                        for idx, signal in enumerate(matching_signals, start=1):
+                            print(f"{idx}: {signal}")
+                        try:
+                            choice = int(input("Enter the number of the enable signal you want to select: "))
+                        except ValueError:
+                            print("Invalid input! Please enter a number.")
+                            exit()
+                        if choice not in range(1, len(matching_signals) + 1):
+                            print("Invalid choice. Exiting...")
+                            exit()
+                        selected_enable.append(matching_signals[choice - 1])
+                        print(f"Selected enable signal: {matching_signals[choice - 1]}")
+                else:
+                    print(f"No enable signals found containing '{select_args}'. Exiting...")
+                    exit()
+        if not selected_enable:
+            print("No enable signals provided, monitoring all times...")
+
+        start_monitor_time = time_module.time() 
+        print("Monitoring signals...")
+        monitored_data = monitor_signals(vcd, vcd.get_signals(), instances, selected_enable, start_time, end_time)
+        end_monitor_time = time_module.time()
+        print(f"Monitoring data collected successfully in {end_monitor_time - start_monitor_time:.2f} seconds.")
+        print("=====================================")
+
+        print("Generating output files...")
+        if args.clock:
+            generate_vcd_files_with_monitored_data(start_time, num_cycles, monitored_data, output_folder)
+        else:
+            generate_one_vcd_file_monitored_data(monitored_data, output_folder)
+
+        print("=====================================")
+        print(f"Output files generated successfully in {time_module.time() - start_parse_time:.2f} seconds.")

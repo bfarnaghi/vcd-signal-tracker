@@ -47,12 +47,16 @@ This command will:
 
 ---
 
-In Version 2.0, you can specify instances when monitoring signals in the VCD file. This allows you to focus only on the signals belonging to specific instances, rather than processing all signals in the file.
+In Version 2.0, you can specify instances to monitor within the VCD file, allowing you to focus only on signals belonging to specific instances rather than processing all signals. Additionally, you can designate an enable signal to monitor output only when it is set to 1. 
+For larger programs, outputs can also be grouped based on the gap between monitored signals, enhancing manageability. These features can be configured using the following command-line arguments.
 
-### Command Line Argument
+### Command-Line Arguments
 
+- `-f` or `--folder`: Path to the folder containing VCD files.
 - `-i` or `--instances`: Specify list of instance names to track.
-
+- `-e` or `--enable`: Enable signal to monitor selected signals.
+- `-g` or `--enable_gap_threshold`: Specify the maximum allowed gap between enable signals to group output.
+ 
 #### Example Usage
 Monitor signals only from the instance named `DUT`:
 ```bash
@@ -63,4 +67,4 @@ python vst.py input.vcd --instances DUT --time 0 10000
 - You can define instances by providing part of the instance name (e.g., `DUT`). The script will then track all signals that include the specified instance at any level in the hierarchy.
 - If the provided instance is not found, the script will suggest similar available instances for selection or allow you to choose to track all similar instances.
 
-
+For instance, when analyzing a hardware module, you can specify the required instance to monitor. If using the gap feature, the extracted VCD files will generate VCD data for each clock cycle across all VCD files from the previous run. This enables detailed access to switching activity per clock cycle.
