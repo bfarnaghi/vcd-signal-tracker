@@ -1,6 +1,6 @@
 # VCD Signal Tracker
 
-**Version**: 1.0
+## Version 1.0 
 
 VCD Signal Tracker is a tool designed for parsing Value Change Dump (VCD) files and generating Switching Activity Interchange Format (SAIF) files for each clock cycle. These files are crucial for power estimation in digital circuit design. The tool also provides features like time-interval-based filtering, clock cycle analysis, and management of output files.
 
@@ -45,7 +45,9 @@ This command will:
 - `-o`: Specifies the output directory for generated files.
 
 
----
+
+
+## Version 2.0 Updates
 
 In Version 2.0, you can specify instances to monitor within the VCD file, allowing you to focus only on signals belonging to specific instances rather than processing all signals. Additionally, you can designate an enable signal to monitor output only when it is set to 1. 
 For larger programs, outputs can also be grouped based on the gap between monitored signals, enhancing manageability. These features can be configured using the following command-line arguments.
@@ -58,7 +60,7 @@ For larger programs, outputs can also be grouped based on the gap between monito
 - `-g` or `--enable_gap_threshold`: Specify the maximum allowed gap between enable signals to group output.
  
 #### Example Usage
-Monitor signals only from the instance named `DUT`:
+**Monitor signals only from the instance named `DUT`:**
 ```bash
 python vst.py input.vcd --instances DUT --time 0 10000
 ```
@@ -68,3 +70,27 @@ python vst.py input.vcd --instances DUT --time 0 10000
 - If the provided instance is not found, the script will suggest similar available instances for selection or allow you to choose to track all similar instances.
 
 For instance, when analyzing a hardware module, you can specify the required instance to monitor. If using the gap feature, the extracted VCD files will generate VCD data for each clock cycle across all VCD files from the previous run. This enables detailed access to switching activity per clock cycle.
+
+
+
+## Version 3.0 Updates
+
+In Version 3.0, the VCD file reading process has been optimized by removing unnecessary parts. Initially, scopes and signals are read and displayed, allowing users to select the required instances or enable signals. Unwanted signals are then removed from tracking, reducing memory usage.
+
+In this version:
+- The `--gap` argument has been removed. Data is now automatically grouped based on the start and end times of each enable signal window.
+- The Hamming distance for each signal is calculated during the VCD file reading process and can be saved to a JSON file using a new argument.
+
+### Command-Line Argument
+
+- `-hd` or `--hamming_distance`: Calculate Hamming distance for each signal.
+ 
+#### Example Usage
+**Monitor signals only from the instance named `DUT`, use the enable signal `trigger`, convert the output to an SAIF file, and remove the VCD file after conversion:**
+```bash
+python vst.py input.vcd --instances DUT -e trigger -saif -rmvcd
+```
+**Monitor signals only from the instance named `DUT`, calculate the Hamming distances for each signal in this instance, and save the output in the `json` folder:**
+```bash
+python vst.py input.vcd --instances DUT -hd -o json
+```
