@@ -1,8 +1,3 @@
-# I extracted the waveforms of the instance with a defined gap first and write in different VCD file
-# then I used these VCD files to extracte the VCD of each clock cycle and write in different VCD file
-# then I use the vc2saif to convert the VCD to SAIF file
-import sys
-sys.path.append('/home/b.farnaghinejad/.local/lib/python3.9/site-packages')
 import  argparse
 from    collections.abc import MutableMapping
 import  bisect
