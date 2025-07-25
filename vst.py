@@ -2,6 +2,7 @@
 # then I used these VCD files to extracte the VCD of each clock cycle and write in different VCD file
 # then I use the vc2saif to convert the VCD to SAIF file
 import sys
+from unittest import signals
 sys.path.append('/home/b.farnaghinejad/.local/lib/python3.9/site-packages')
 import  argparse
 from    collections.abc import MutableMapping
@@ -110,7 +111,50 @@ class VCDPARSE(object):
         hier = []
 
         with open(self.vcd_path, 'r') as vcd_file:
-            
+            # line = vcd_file.readline()
+            # while line:
+            #     if '$enddefinitions' in line:
+            #         break
+            #     # Handle scopes
+            #     elif '$scope' in line:
+            #         scope_name = line.split()[2]
+            #         hier.append(scope_name)
+            #     elif '$upscope' in line:
+            #         hier.pop()
+            #     elif '$var' in line:
+            #         ls = line.split()
+            #         type = ls[1]
+            #         size = ls[2]
+            #         identifier_code = ls[3]
+            #         name = ''.join(ls[4:-1])
+            #         path = '.'.join(hier)
+
+            #         if path:
+            #             reference = path + '.' + name
+            #         else:
+            #             reference = name
+
+            #         self.signals.append(reference)
+            #         self.data[identifier_code] = Signal(size, type, identifier_code)
+            #         self.references_to_ids[reference] = identifier_code
+            #         self.cur_sig_vals[identifier_code] = self.initial_value
+
+            #     elif '$timescale' in line:
+            #         if '$end' not in line:
+            #             while True:
+            #                 line += " " + vcd_file.readline().strip().rstrip()
+            #                 if '$end' in line:
+            #                     break
+            #         magnitude = Decimal(re.findall(r"\d+|$", line)[0])
+            #         unit = re.findall(r"s|ms|us|ns|ps|fs", line)[0]
+            #         factor = self.factor[unit]
+            #         self.timescale["timescale"] = magnitude * Decimal(factor)
+            #         self.timescale["magnitude"] = magnitude
+            #         self.timescale["unit"] = unit
+            #         self.timescale["factor"] = Decimal(factor)
+
+            #     line = vcd_file.readline()
+
             # Parsing logic for definitions
             for line in vcd_file:
                 if '$enddefinitions' in line:
@@ -174,10 +218,15 @@ class VCDPARSE(object):
         time = 0
         first_time = True
 
-        with open(self.vcd_path, 'r') as vcd_file, tqdm(total=self.total_line, desc="Reading VCD", unit=" lines") as pbar:
+        with open(self.vcd_path, 'r') as vcd_file, tqdm(total=self.total_line, desc="Reading VCD", unit=" lines", miniters=1000) as pbar:
+            # Skip definitions section
+            for i, line in enumerate(vcd_file):
+                if i % 1000 == 0:
+                    pbar.update(1000)
 
-            for line in vcd_file:
-                pbar.update(1)
+                if line.startswith("$"):
+                    continue
+
                 line0 = line[0]
                 if line == '':
                     break
@@ -523,6 +572,7 @@ def generate_vcd_files_with_groups(start_time, num_cycles, monitored_data_groups
     print(f"VCD files generated for all groups in {time_module.time() - start_cycle_time:.2f} seconds.")
 # Generate VCD Files for each monitored data group
 def generate_one_vcd_file_monitored_data(monitored_data_groups, output_folder):
+
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
@@ -654,6 +704,74 @@ def find_enable_signals():
             exit()
     return selected_enable
 
+def process_hamming_distances(data, target_signal):
+
+    signal_data = data[target_signal]
+    time_windows = []
+    current_window = None
+
+    # Separate time windows based on the target signal
+    for time, hd in signal_data:
+        if hd == 1 and current_window is None:
+            current_window = [time, None]
+        elif hd == 1 and current_window is not None:
+            current_window[1] = time
+            time_windows.append(current_window)
+            current_window = None
+
+    if current_window is not None:
+        current_window[1] = max(time for time, _ in signal_data)
+        time_windows.append(current_window)
+
+    grouped_signals = {f"time_window_{i+1}": {} for i in range(len(time_windows))}
+
+    #remove the target signal from the data
+    del data[target_signal]
+
+    # Group all signals based on time windows
+    for signal, hd_data in data.items():
+        for i, (start, end) in enumerate(time_windows):
+            grouped_signals[f"time_window_{i+1}"][signal] = [
+                [time, hd] for time, hd in hd_data if start <= time <= end
+            ]
+
+    # Sum signals at each time step for each time window
+    # window_sums = {}
+    # for window, signals in grouped_signals.items():
+    #     time_sum = {}
+    #     for signal, hd_list in signals.items():
+    #         for time, hd in hd_list:
+    #             if time not in time_sum:
+    #                 time_sum[time] = 0
+    #             time_sum[time] += hd
+    #     window_sums[window] = time_sum
+
+    # Sum signals at each time step for each time window
+    window_sums = {}
+    for window, signals in grouped_signals.items():
+        time_sum = {}
+        # Determine the full range of times for the window
+        all_times = set()
+        for signal, hd_list in signals.items():
+            all_times.update(time for time, _ in hd_list)
+
+        if len(time_windows) > 0:
+            window_start, window_end = time_windows[int(window.split('_')[-1]) - 1]
+            all_times.update(range(window_start, window_end + 1))
+
+        all_times = sorted(all_times)
+        for time in all_times:
+            time_sum[time] = 0  # Initialize to 0
+
+        for signal, hd_list in signals.items():
+            hd_dict = {time: hd for time, hd in hd_list}
+            for time in all_times:
+                if time in hd_dict:
+                    time_sum[time] += hd_dict[time]
+        window_sums[window] = time_sum
+
+    return grouped_signals, window_sums
+
 ##### Main Function
 if __name__ == "__main__":
 
@@ -696,10 +814,32 @@ if __name__ == "__main__":
             instances = validate_instances(args.instances, vcd.get_signals())
 
         def filter_signals_by_instance(signals, instances):
-            return [signal for signal in signals if any(instance in signal for instance in instances)]
-
+            return [
+                signal for signal in signals
+                if any(signal.startswith(instance + '.') for instance in instances)
+            ]
+        
+        print("Number of signals before filtering:", len(vcd.get_signals()))
+        print("First few signals:", vcd.get_signals()[:5])
+        print("Split signal path:", vcd.get_signals()[0].split('.')[:-1])
+        print("Filtering against instances:", instances)
         # Filter signals to include only those that belong to the specified instances
         signals = filter_signals_by_instance(vcd.get_signals(), instances) if instances!="All" else vcd.get_signals()
+
+        # Remove signals with duplicate identifier_code, keep only one per identifier_code
+        unique_signals = {}
+        for signal in signals:
+            identifier_code = vcd.references_to_ids.get(signal)
+            if identifier_code and identifier_code not in unique_signals:
+                unique_signals[identifier_code] = signal
+        signals = list(unique_signals.values())
+
+        #write signal name into a file
+        output_file = os.path.join(args.output_folder if args.output_folder else "output", "signals.txt")
+        with open(output_file, 'w') as f:
+            for signal in signals:
+                f.write(signal + '\n')
+        print(f"Signal names written to {output_file}")
 
         # Find enable signals (if any)
         selected_enable = []
@@ -710,6 +850,9 @@ if __name__ == "__main__":
                 print("No enable signals provided, monitoring all times...")
         
         signals = selected_enable + signals
+
+        # remove signals with same identifier code not its name
+
 
         if not args.clock:
             print("=====================================")
@@ -772,9 +915,10 @@ if __name__ == "__main__":
             output_folder = args.output_folder if args.output_folder else "output"
             if not os.path.exists(output_folder):
                 os.makedirs(output_folder)
+            grouped_data, window_sums = process_hamming_distances(hamming_distances, selected_enable[0])
             output_file = os.path.join(output_folder, f"hamming_distances_{os.path.basename(vcd_file)}.json")
             with open(output_file, 'w') as f:
-                json.dump(hamming_distances, f, indent=4)
+                json.dump(window_sums, f, indent=4)
 
             end_time_hamming = time_module.time()
             print(f"Hamming distance calculated and written to {output_file} successfully in {end_time_hamming - start_time_hamming:.2f} seconds.")
